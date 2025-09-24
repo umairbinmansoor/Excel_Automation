@@ -125,15 +125,29 @@ def photo_capture_screen():
     camera_facing_mode = st.radio("Select Camera", ("Front", "Back"), horizontal=True, index=0)
     facing_mode = "user" if camera_facing_mode == "Front" else "environment"
 
+    if "webrtc_is_playing" not in st.session_state:
+        st.session_state.webrtc_is_playing = False
+
+    if not st.session_state.webrtc_is_playing:
+        if st.button("Start Camera"):
+            st.session_state.webrtc_is_playing = True
+            st.rerun()
+
+    if st.session_state.webrtc_is_playing:
+        if st.button("Stop Camera"):
+            st.session_state.webrtc_is_playing = False
+            st.rerun()
+
     webrtc_ctx = webrtc_streamer(
         key="camera-stream",
         mode=WebRtcMode.SENDRECV,
         media_stream_constraints={"video": {"facingMode": facing_mode}, "audio": False},
-        video_html_attrs={"autoplay": True, "controls": True, "style": {"width": "100%", "height": "auto"}},
+        video_html_attrs={"autoplay": True, "controls": False, "style": {"width": "100%", "height": "auto"}},
+        desired_playing_state=st.session_state.webrtc_is_playing
     )
 
-    if st.button("Capture Image"):
-        if webrtc_ctx.video_receiver:
+    if webrtc_ctx.video_receiver:
+        if st.button("Capture Image"):
             try:
                 frame = webrtc_ctx.video_receiver.get_frame(timeout=1)
                 if frame:
@@ -147,13 +161,17 @@ def photo_capture_screen():
                     else:
                         st.session_state.captured_images[photo_name] = img_byte_arr
                         st.success(f"'{photo_name}' captured successfully!")
+                        # Stop the camera after capture
+                        st.session_state.webrtc_is_playing = False
                         st.rerun()
                 else:
                     st.warning("Could not retrieve a frame. Is the camera stream active?")
             except Exception as e:
                 st.error(f"Error capturing frame: {e}")
-        else:
-            st.warning("WebRTC stream not active. Please start the camera first.")
+    elif st.session_state.webrtc_is_playing:
+        st.warning("Camera is starting... please wait a moment and try again.")
+    else:
+        st.info("Click 'Start Camera' to begin.")
 
 
     # Display captured images
