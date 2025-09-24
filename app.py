@@ -24,8 +24,6 @@ if 'baseband_data' not in st.session_state:
     st.session_state.baseband_data = {}
 if 'captured_images' not in st.session_state:
     st.session_state.captured_images = {}
-if "camera_facing_mode" not in st.session_state:
-    st.session_state.camera_facing_mode = "user"
 
 # --- Photo List ---
 # As per 'Photo List' sheet
@@ -124,18 +122,14 @@ def photo_capture_screen():
     # Dropdown for photo selection
     photo_name = st.selectbox("Select a photo to capture:", photo_list)
 
-    if st.button("SELECT DEVICE"):
-        if st.session_state.camera_facing_mode == "user":
-            st.session_state.camera_facing_mode = "environment"
-        else:
-            st.session_state.camera_facing_mode = "user"
-        st.rerun()
+    camera_facing_mode = st.radio("Select Camera", ("Front", "Back"), horizontal=True, index=0)
+    facing_mode = "user" if camera_facing_mode == "Front" else "environment"
 
     webrtc_ctx = webrtc_streamer(
-        key=f"camera-stream-{st.session_state.camera_facing_mode}",
+        key="camera-stream",
         mode=WebRtcMode.SENDRECV,
-        media_stream_constraints={"video": {"facingMode": st.session_state.camera_facing_mode}, "audio": False},
-        video_html_attrs={"style": {"width": "100%", "height": "auto"}},
+        media_stream_constraints={"video": {"facingMode": facing_mode}, "audio": False},
+        video_html_attrs={"autoplay": True, "controls": True, "style": {"width": "100%", "height": "auto"}},
     )
 
     if st.button("Capture Image"):
