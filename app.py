@@ -122,72 +122,56 @@ def photo_capture_screen():
     # Dropdown for photo selection
     photo_name = st.selectbox("Select a photo to capture:", photo_list)
 
-    camera_facing_mode = st.radio("Select Camera", ("Front", "Back"), horizontal=True, index=0)
+    camera_facing_mode = st.radio("Select Camera", ("Front", "Back"), horizontal=True, index=1) # Default to Back camera
     facing_mode = "user" if camera_facing_mode == "Front" else "environment"
 
-    if "webrtc_is_playing" not in st.session_state:
-        st.session_state.webrtc_is_playing = False
-
-    if not st.session_state.webrtc_is_playing:
-        if st.button("Start Camera"):
-            st.session_state.webrtc_is_playing = True
-            st.rerun()
-
-    if st.session_state.webrtc_is_playing:
-        if st.button("Stop Camera"):
-            st.session_state.webrtc_is_playing = False
-            st.rerun()
-
     webrtc_ctx = webrtc_streamer(
-        key="camera-stream",
+        key=f"camera-stream-{facing_mode}", # Key must be unique and change to re-render
         mode=WebRtcMode.SENDRECV,
         media_stream_constraints={"video": {"facingMode": facing_mode}, "audio": False},
         video_html_attrs={"autoplay": True, "controls": False, "style": {"width": "100%", "height": "auto"}},
-        desired_playing_state=st.session_state.webrtc_is_playing
     )
 
-    if webrtc_ctx.video_receiver:
-        if st.button("Capture Image"):
+    if st.button("Capture Image"):
+        if webrtc_ctx.video_receiver:
             try:
-                frame = webrtc_ctx.video_receiver.get_frame(timeout=1)
+                frame = webrtc_ctx.video_receiver.get_frame(timeout=10) # Increased timeout
                 if frame:
                     img = frame.to_image()
                     img_byte_arr = io.BytesIO()
-                    img.save(img_byte_arr, format='PNG')
+                    # Resize image to reduce file size
+                    img.thumbnail((800, 600)) # Resize to max 800x600
+                    img.save(img_byte_arr, format='JPEG', quality=85) # Save as JPEG with quality
                     img_byte_arr = img_byte_arr.getvalue()
 
-                    if len(img_byte_arr) > 1024 * 1024:
-                        st.error("Image size is too large. Please capture a smaller image.")
-                    else:
-                        st.session_state.captured_images[photo_name] = img_byte_arr
-                        st.success(f"'{photo_name}' captured successfully!")
-                        # Stop the camera after capture
-                        st.session_state.webrtc_is_playing = False
-                        st.rerun()
+                    st.session_state.captured_images[photo_name] = img_byte_arr
+                    st.success(f"'{photo_name}' captured successfully!")
+                    st.rerun()
                 else:
-                    st.warning("Could not retrieve a frame. Is the camera stream active?")
+                    st.warning("No frame received from the camera. Please try again.")
             except Exception as e:
                 st.error(f"Error capturing frame: {e}")
-    elif st.session_state.webrtc_is_playing:
-        st.warning("Camera is starting... please wait a moment and try again.")
-    else:
-        st.info("Click 'Start Camera' to begin.")
+        else:
+            st.warning("Camera not ready. Please wait for the video stream to start.")
 
 
     # Display captured images
     if st.session_state.captured_images:
         st.subheader("Captured Photos")
-        for name, img_data in st.session_state.captured_images.items():
-            st.image(img_data, caption=name, width=200)
+        # Create a grid for captured images
+        cols = st.columns(3)
+        for i, (name, img_data) in enumerate(st.session_state.captured_images.items()):
+            with cols[i % 3]:
+                st.image(img_data, caption=name, use_column_width=True)
 
     # Navigation and Download
-    col1, col2, col3 = st.columns([1,1,1])
+    st.markdown("<hr>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
     with col1:
         st.button("Back to Form", on_click=set_stage, args=[0])
     with col2:
         if st.session_state.captured_images:
              st.button("Generate and Download Excel", on_click=set_stage, args=[2])
-
 
 
 def generate_excel():
