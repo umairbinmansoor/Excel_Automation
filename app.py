@@ -24,6 +24,8 @@ if 'baseband_data' not in st.session_state:
     st.session_state.baseband_data = {}
 if 'captured_images' not in st.session_state:
     st.session_state.captured_images = {}
+if 'webrtc_is_playing' not in st.session_state:
+    st.session_state.webrtc_is_playing = False
 
 # --- Photo List ---
 # As per 'Photo List' sheet
@@ -119,48 +121,67 @@ def baseband_swap_form():
 def photo_capture_screen():
     st.header("Capture Photos")
 
+    # Hide the "SELECT DEVICE" text from webrtc-streamer
+    st.markdown("""
+        <style>
+            .stButton>button {
+                background-color: #FF4B4B;
+                color: white;
+            }
+            div[data-testid="stImage"] > img { 
+                border: 2px solid #FF4B4B; 
+            }
+            /* This is a hack to hide the select device element */
+            div.stButton > button:first-of-type {
+                display: none;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
     # Dropdown for photo selection
     photo_name = st.selectbox("Select a photo to capture:", photo_list)
 
     camera_facing_mode = st.radio("Select Camera", ("Front", "Back"), horizontal=True, index=1) # Default to Back camera
     facing_mode = "user" if camera_facing_mode == "Front" else "environment"
 
-    webrtc_ctx = webrtc_streamer(
-        key=f"camera-stream-{facing_mode}", # Key must be unique and change to re-render
-        mode=WebRtcMode.SENDRECV,
-        media_stream_constraints={"video": {"facingMode": facing_mode}, "audio": False},
-        video_html_attrs={"autoplay": True, "controls": False, "style": {"width": "100%", "height": "auto"}},
-    )
-    if webrtc_ctx.video_receiver is None:
-        st.spinner("Initializing camera...")
+    if not st.session_state.webrtc_is_playing:
+        if st.button("START"):
+            st.session_state.webrtc_is_playing = True
+            st.rerun()
+    else:
+        webrtc_ctx = webrtc_streamer(
+            key=f"camera-stream-{facing_mode}", # Key must be unique and change to re-render
+            mode=WebRtcMode.SENDRECV,
+            media_stream_constraints={"video": {"facingMode": facing_mode}, "audio": False},
+            video_html_attrs={"autoplay": True, "controls": False, "style": {"width": "100%", "height": "auto"}},
+            desired_playing_state=st.session_state.webrtc_is_playing
+        )
 
-    if st.button("Capture Image"):
-        if webrtc_ctx.video_receiver:
-            try:
-                frame = webrtc_ctx.video_receiver.get_frame(timeout=10) # Increased timeout
-                if frame:
-                    img = frame.to_image()
-                    img_byte_arr = io.BytesIO()
-                    # Resize image to reduce file size
-                    img.thumbnail((800, 600)) # Resize to max 800x600
-                    img.save(img_byte_arr, format='JPEG', quality=85) # Save as JPEG with quality
-                    img_byte_arr = img_byte_arr.getvalue()
+        if st.button("Capture Image"):
+            if webrtc_ctx.video_receiver:
+                try:
+                    frame = webrtc_ctx.video_receiver.get_frame(timeout=10)
+                    if frame:
+                        img = frame.to_image()
+                        img_byte_arr = io.BytesIO()
+                        img.thumbnail((800, 600))
+                        img.save(img_byte_arr, format='JPEG', quality=85)
+                        img_byte_arr = img_byte_arr.getvalue()
 
-                    st.session_state.captured_images[photo_name] = img_byte_arr
-                    st.success(f"'{photo_name}' captured successfully!")
-                    st.rerun()
-                else:
-                    st.warning("No frame received from the camera. Please try again.")
-            except Exception as e:
-                st.error(f"Error capturing frame: {e}")
-        else:
-            st.warning("Camera not ready. Please wait for the video stream to start.")
-
+                        st.session_state.captured_images[photo_name] = img_byte_arr
+                        st.success(f"'{photo_name}' captured successfully!")
+                        st.session_state.webrtc_is_playing = False # Stop camera after capture
+                        st.rerun()
+                    else:
+                        st.warning("No frame received. Please try again.")
+                except Exception as e:
+                    st.error(f"Error capturing frame: {e}")
+            else:
+                st.warning("Camera not ready. Please wait for the video stream to start.")
 
     # Display captured images
     if st.session_state.captured_images:
         st.subheader("Captured Photos")
-        # Create a grid for captured images
         cols = st.columns(3)
         for i, (name, img_data) in enumerate(st.session_state.captured_images.items()):
             with cols[i % 3]:
@@ -209,7 +230,7 @@ def generate_excel():
         ws_baseband['C3'].value = data.get('antenna_location_other')
 
     style_cell(ws_baseband['A4'], "Installation:", bold=True)
-    ws_baseband['B4'].value = data.get('installation')
+    ws_band['B4'].value = data.get('installation')
 
     style_cell(ws_baseband['C4'], "Site Name:", bold=True)
     ws_baseband['D4'].value = data.get('site_name')
