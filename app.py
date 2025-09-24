@@ -131,6 +131,8 @@ def photo_capture_screen():
         media_stream_constraints={"video": {"facingMode": facing_mode}, "audio": False},
         video_html_attrs={"autoplay": True, "controls": False, "style": {"width": "100%", "height": "auto"}},
     )
+    if webrtc_ctx.video_receiver is None:
+        st.spinner("Initializing camera...")
 
     if st.button("Capture Image"):
         if webrtc_ctx.video_receiver:
